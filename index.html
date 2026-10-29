@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Halloween Lucky Draw</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Creepster&family=IBM+Plex+Sans+Thai:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* Layout: one stage (big name + draw button) beside a quiet roster panel; stacks on phones */
+:root{
+  --bg:#141110; --surface:#1d1916; --line:#332b25; --fg:#f5ece4; --muted:#a8988b;
+  --kex:#f47920; --kex-deep:#c95a0c; --ghost:#e9e2d8; --danger:#e2554a; --ok:#6fbf73;
+  --f-display:"Creepster", "Impact", fantasy;
+  --f-body:"IBM Plex Sans Thai", "Noto Sans Thai", system-ui, sans-serif;
+  --f-mono:"IBM Plex Mono", ui-monospace, monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.55;
+  background-image:radial-gradient(900px 500px at 30% -10%, rgba(244,121,32,.16), transparent 60%);
+  padding-left:max(16px, env(safe-area-inset-left,0px));padding-right:max(16px, env(safe-area-inset-right,0px));padding-block:20px 40px}
+.wrap{max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:24px}
+header{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:12px}
+.brand svg{flex:none}
+.eyebrow .kex{color:var(--kex);font-weight:700}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0}
+h1{margin:0;font-size:clamp(22px,4vw,30px);line-height:1.1;font-weight:700;text-wrap:balance}
+h1 .kex{color:var(--kex)}
+.grid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:820px){.grid{grid-template-columns:minmax(0,1fr)}}
+.panel-toggle{margin-left:auto;font-size:13px;padding:8px 14px;border-radius:999px;display:inline-flex;align-items:center;gap:8px;color:var(--muted)}
+.panel-toggle:hover{color:var(--fg);border-color:var(--muted)}
+.panel-toggle svg{flex:none}
+body.focus .grid{grid-template-columns:minmax(0,1fr);max-width:860px;margin-inline:auto;width:100%}
+body.focus .panel{display:none}
+
+/* Stage */
+.stage{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:var(--surface);
+  padding-block:28px 26px;padding-inline:clamp(16px,4vw,36px);display:flex;flex-direction:column;align-items:center;gap:18px;text-align:center}
+.stage .word{font-family:var(--f-display);color:var(--kex);font-size:clamp(40px,9vw,76px);line-height:1;letter-spacing:.02em;margin:0}
+.reel{width:100%;min-height:150px;display:grid;place-items:center;border-radius:14px;
+  border:2px dashed var(--line);padding:18px;transition:border-color .2s, background .2s}
+.reel.rolling{border-color:var(--kex-deep)}
+.reel.done{border-style:solid;border-color:var(--kex);background:rgba(244,121,32,.07)}
+.reel .name{display:flex;flex-direction:column;align-items:center;gap:4px}
+.reel .pid{font-family:var(--f-mono);font-size:13px;color:var(--kex);letter-spacing:.06em}
+.reel .pth{font-size:clamp(30px,6.5vw,54px);font-weight:700;line-height:1.15;overflow-wrap:anywhere;text-wrap:balance}
+.reel .pen{font-size:clamp(16px,2.8vw,22px);color:var(--muted);overflow-wrap:anywhere}
+.person{display:flex;flex-direction:column;min-width:0}
+.person .sub{font-size:12.5px;color:var(--muted)}
+.person .sub code{font-family:var(--f-mono);font-size:11.5px;color:var(--kex)}
+.reel .hint{color:var(--muted)}
+.count{font-family:var(--f-mono);font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.count b{color:var(--fg)}
+
+button{font:inherit;cursor:pointer;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--fg);padding:10px 16px}
+button:focus-visible,label.file:focus-within{outline:2px solid var(--kex);outline-offset:2px}
+button:disabled{opacity:.45;cursor:not-allowed}
+.draw{background:var(--kex);border-color:var(--kex);color:#1a0d03;font-weight:700;font-size:20px;padding:14px 44px;border-radius:999px;
+  box-shadow:0 6px 0 var(--kex-deep);transition:transform .08s, box-shadow .08s}
+.draw:active:not(:disabled){transform:translateY(4px);box-shadow:0 2px 0 var(--kex-deep)}
+.kbd{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+
+.decide{width:100%;display:flex;flex-direction:column;gap:10px}
+.decide p{margin:0;color:var(--muted)}
+.row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.btn-ok{border-color:var(--ok);color:var(--ok)}
+.btn-ok:hover{background:rgba(111,191,115,.12)}
+.btn-absent{border-color:var(--danger);color:var(--danger)}
+.btn-absent:hover{background:rgba(226,85,74,.12)}
+.btn-ghost:hover{background:rgba(255,255,255,.05)}
+
+/* Panel */
+.panel{border:1px solid var(--line);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:16px;background:var(--bg)}
+.panel h2{font-size:15px;margin:0;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.panel h2 span{font-family:var(--f-mono);font-size:12px;color:var(--muted);font-weight:500}
+.tools{display:flex;gap:8px;flex-wrap:wrap}
+.tools button,label.file{font-size:13px;padding:7px 12px;border-radius:10px}
+label.file{border:1px solid var(--kex);color:var(--kex);cursor:pointer;display:inline-flex;align-items:center}
+label.file input{position:absolute;opacity:0;width:1px;height:1px}
+textarea{width:100%;min-height:90px;resize:vertical;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:10px;font:inherit;font-size:14px}
+textarea:focus{outline:2px solid var(--kex);outline-offset:1px}
+.note{font-size:12.5px;color:var(--muted);margin:0}
+.list{list-style:none;margin:0;padding:0;max-height:240px;overflow:auto;border-top:1px solid var(--line)}
+.list li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 2px;border-bottom:1px solid var(--line);font-size:14px}
+.list li span{min-width:0;overflow-wrap:anywhere}
+.list li button{font-size:12px;padding:3px 9px;border-radius:8px;color:var(--muted);flex:none}
+.list .empty{color:var(--muted);justify-content:center}
+.tag{font-family:var(--f-mono);font-size:11px;color:var(--kex);margin-right:6px}
+.tabs{display:flex;gap:6px}
+.tabs button{font-size:13px;padding:6px 10px;border-radius:999px}
+.tabs button[aria-selected="true"]{background:var(--kex);border-color:var(--kex);color:#1a0d03;font-weight:600}
+.banner{font-size:12.5px;padding:8px 10px;border-radius:10px;background:rgba(244,121,32,.1);color:var(--kex);margin:0}
+
+/* Ambient bats */
+/* Prize board */
+.prizes{width:100%;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;position:relative}
+.prize{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;padding:12px 14px;border-radius:14px;background:var(--bg)}
+.prize .pn{font-weight:700;font-size:15px}
+.prize .pq{font-family:var(--f-mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.prizes{border-top:1px solid var(--line);padding-top:18px}
+.prize .pg{font-size:12px;color:var(--ok)}
+.prize .pg.zero{color:var(--muted)}
+.prize .pnow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--kex)}
+.prize.current{border-color:var(--kex);box-shadow:inset 0 0 0 1px var(--kex)}
+.prize.current .pn{color:var(--kex)}
+.prize[aria-expanded="true"]{background:var(--surface);border-color:var(--fg)}
+.prize-detail{width:100%;text-align:left;border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;background:var(--bg)}
+.prize-detail .dh{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.prize-detail h3{margin:0;font-size:15px}
+.prize-detail ol{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:4px;max-height:220px;overflow:auto}
+.prize-detail li{overflow-wrap:anywhere}
+.prize-detail .empty{color:var(--muted);margin:0}
+.prize-detail button{font-size:13px;padding:6px 12px;border-radius:10px}
+.prize-detail .go{border-color:var(--kex);color:var(--kex)}
+.prize.out{opacity:.6}
+.prize.out .pq{color:var(--ok)}
+.pill{font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid currentColor}
+.now{margin:0;font-size:15px;color:var(--muted)}
+.now b{color:var(--kex)}
+.prize-edit{display:flex;flex-direction:column;gap:8px}
+.prize-edit .pr{display:grid;grid-template-columns:minmax(0,1fr) 64px auto;gap:6px;align-items:center}
+.prize-edit input{width:100%;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit;font-size:14px}
+.prize-edit input:focus{outline:2px solid var(--kex);outline-offset:1px}
+.prize-edit button{font-size:12px;padding:5px 9px;border-radius:8px;color:var(--muted)}
+.bat{position:absolute;opacity:.18;pointer-events:none;animation:float 9s ease-in-out infinite}
+@keyframes float{50%{transform:translateY(-10px) rotate(-4deg)}}
+.pop{animation:pop .45s cubic-bezier(.2,1.6,.4,1)}
+@keyframes pop{0%{transform:scale(.7);opacity:.3}100%{transform:scale(1);opacity:1}}
+@media (prefers-reduced-motion:reduce){.bat,.pop{animation:none}}
+</style>
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <svg width="46" height="46" viewBox="0 0 64 64" aria-hidden="true">
+        <path d="M32 10c2-5 6-6 8-5-3 1-5 3-6 6" fill="none" stroke="#6fbf73" stroke-width="3" stroke-linecap="round"/>
+        <ellipse cx="32" cy="38" rx="26" ry="21" fill="#f47920"/>
+        <path d="M32 17c-7 0-10 10-10 21s3 21 10 21 10-10 10-21-3-21-10-21z" fill="#c95a0c" opacity=".5"/>
+        <path d="M18 33l7-5 3 7zM46 33l-7-5-3 7z" fill="#141110"/>
+        <path d="M17 44c5 6 25 6 30 0l-4 3-3-3-4 3-4-3-4 3-4-3-3 3z" fill="#141110"/>
+      </svg>
+      <div>
+        <p class="eyebrow"><span class="kex">KEX Express</span> IT Team · Halloween Party 2026</p>
+        <h1>Halloween Lucky Draw</h1>
+      </div>
+    </div>
+    <button class="panel-toggle" id="panelToggle" aria-controls="settingsPanel" aria-expanded="true">
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10 3v10" stroke="currentColor" stroke-width="1.4"/></svg>
+      <span id="panelToggleText">ซ่อนแผงตั้งค่า</span>
+    </button>
+  </header>
+
+  <div class="grid">
+    <section class="stage" aria-label="สุ่มชื่อ">
+      <svg class="bat" style="top:14px;left:18px" width="64" height="28" viewBox="0 0 64 28" aria-hidden="true"><path d="M32 8c-2-4-4-4-4-4l1 5c-6-6-16-8-29-3 6 2 9 6 9 11 4-3 8-3 11 0 3-3 7-2 9 1l3-4 3 4c2-3 6-4 9-1 3-3 7-3 11 0 0-5 3-9 9-11-13-5-23-3-29 3l1-5s-2 0-4 4z" fill="#e9e2d8"/></svg>
+      <svg class="bat" style="top:40px;right:24px;animation-delay:-4s" width="44" height="20" viewBox="0 0 64 28" aria-hidden="true"><path d="M32 8c-2-4-4-4-4-4l1 5c-6-6-16-8-29-3 6 2 9 6 9 11 4-3 8-3 11 0 3-3 7-2 9 1l3-4 3 4c2-3 6-4 9-1 3-3 7-3 11 0 0-5 3-9 9-11-13-5-23-3-29 3l1-5s-2 0-4 4z" fill="#e9e2d8"/></svg>
+
+      <p class="word">Lucky Draw</p>
+      <p class="now" id="now"></p>
+      <div class="reel" id="reel" aria-live="polite">
+        <div class="hint" id="reelText">กดปุ่มด้านล่างเพื่อสุ่มผู้โชคดี</div>
+      </div>
+      <div class="count" id="count"></div>
+      <button class="draw" id="drawBtn">สุ่มชื่อ</button>
+      <div class="kbd">หรือกด Spacebar</div>
+
+      <div class="decide" id="decide" hidden>
+        <p>ผู้ถูกสุ่มอยู่ในงานไหม?</p>
+        <div class="row">
+          <button class="btn-ok" id="keepWin">อยู่ในงาน · ได้รางวัล</button>
+          <button class="btn-absent" id="absent">ไม่อยู่ · ตัดชื่อแล้วสุ่มใหม่</button>
+          <button class="btn-ghost" id="skip">ไม่ตัดชื่อ</button>
+        </div>
+      </div>
+
+      <div class="prizes" id="prizes" aria-label="ของรางวัล"></div>
+      <div class="prize-detail" id="prizeDetail" hidden></div>
+    </section>
+
+    <aside class="panel" id="settingsPanel" aria-label="รายชื่อและการตั้งค่า">
+      <div class="tabs" role="tablist">
+        <button role="tab" aria-selected="true" data-tab="pool">ในโถ</button>
+        <button role="tab" aria-selected="false" data-tab="winners">ได้รางวัล</button>
+        <button role="tab" aria-selected="false" data-tab="absent">ไม่อยู่</button>
+      </div>
+      <h2 id="listTitle">รายชื่อที่รอสุ่ม <span id="listCount"></span></h2>
+      <p class="banner" id="sampleBanner" hidden></p>
+      <ul class="list" id="list"></ul>
+
+      <h2>ตั้งค่าของรางวัล <span>ชื่อ · จำนวน</span></h2>
+      <div class="prize-edit" id="prizeEdit"></div>
+      <div class="tools"><button id="addPrize">เพิ่มรางวัล</button></div>
+
+      <h2>นำเข้ารายชื่อ</h2>
+      <div class="tools">
+        <label class="file">อัปโหลดไฟล์<input type="file" id="fileIn" accept=".txt,.csv,.xlsx,.xls"></label>
+        <button id="resetBtn">เริ่มรอบใหม่</button>
+      </div>
+      <p class="note">CSV / Excel ที่มีคอลัมน์ empcode, employeename, employeenameen จะแสดง ID และชื่อ TH/EN ให้อัตโนมัติ ไฟล์ที่มีแค่ชื่อบรรทัดละคนก็ใช้ได้</p>
+      <textarea id="paste" placeholder="หรือวางรายชื่อที่นี่ บรรทัดละหนึ่งชื่อ"></textarea>
+      <div class="tools"><button id="pasteBtn">ใช้รายชื่อนี้</button></div>
+    </aside>
+  </div>
+</div>
+
+<script>
+(function(){
+  const DEFAULT_PEOPLE = [{"id": "kxth10001257", "th": "เสียง ควาง", "en": "Xiang Kuang"}, {"id": "kxth10001259", "th": "หาว จาง", "en": "Hao Zhang"}, {"id": "kxth10001302", "th": "ฮ่าว เฉิน", "en": "Hao Chen"}, {"id": "kxth10005927", "th": "ซิง หง", "en": "Xing Hong"}, {"id": "kxth10006355", "th": "อรนิสา แสงเดช", "en": "Onnisa Sangdech"}, {"id": "kxth10007462", "th": "นิธินันต์ มุจนานนท์", "en": "Nitinun Mujananon"}, {"id": "kxth10011125", "th": "ปราโมทย์ ลาดจำปา", "en": "Pramote Ladjampa"}, {"id": "kxth10011147", "th": "ขวัญชนก มุทุกันต์", "en": "Khuanchanok Mutukan"}, {"id": "kxth10016625", "th": "เอกวุฒิ สาครพิทักษ์กุล", "en": "Eakkawut Sakornpitakkul"}, {"id": "kxth10019664", "th": "ณัฐวุฒิ ระมา", "en": "Nattawut Rama"}, {"id": "kxth10021634", "th": "ฐิติพรรณ หลีสกุล", "en": "Thitipan Leesakul"}, {"id": "kxth10022562", "th": "วรรณกานต์ เพชรโลหะกุล", "en": "Wannakarn Petchlohakul"}, {"id": "kxth10022563", "th": "รณชัย ดำรงค์ศิลป์", "en": "Ronnachai Damrongsilp"}, {"id": "kxth10022631", "th": "Yu Li", "en": "Yu Li"}, {"id": "kxth10025210", "th": "ก้องเกียรติ เครื่องพนัส", "en": "Kongkiat Khrueangphanat"}, {"id": "kxth5809010", "th": "ณัฐวุฒิ แสนคำ", "en": "Nattawut Saenkham"}, {"id": "kxth5809268", "th": "ณัฏฐชัย แข็งแรง", "en": "Nattachai Khangrang"}, {"id": "kxth5901014", "th": "อนุชิต ตนภู", "en": "Anuchit Tonpoo"}, {"id": "kxth5901684", "th": "พายุ ร่างเจริญ", "en": "Payu Rangjarern"}, {"id": "kxth6000016", "th": "วีระพล เรียบร้อย", "en": "Weerapol Riabroi"}, {"id": "kxth6000489", "th": "อารยา คุณารักษ์", "en": "Araya Kunarak"}, {"id": "kxth6000882", "th": "โสธร เปรมทองสุข", "en": "Sothorn Premthongsuk"}, {"id": "kxth6000885", "th": "เด่นชัย พลเกตุ", "en": "Denchai Polgate"}, {"id": "kxth6002020", "th": "หรรษา รังษา", "en": "Hansa Rangsa"}, {"id": "kxth6002200", "th": "ทวีป เรืองสุรเชษฐ์", "en": "Thaweep Ruangsurachate"}, {"id": "kxth6002621", "th": "ชาญชัย สีเทา", "en": "Chanchai Seethao"}, {"id": "kxth6103984", "th": "ธนวัฒน์ จันทะดวง", "en": "Tanawat Chantadoung"}, {"id": "kxth6109955", "th": "วรมณ ทนุวรรณ์", "en": "Woramon Tanuwun"}, {"id": "kxth6112277", "th": "ธีรพจน์ อุดมกิจธนสาร", "en": "Teerapoj Udomkitanasarn"}, {"id": "kxth6115946", "th": "วีรภัทร ละมูล", "en": "Weeraphat Lamoon"}, {"id": "kxth6117456", "th": "กิจ โกศลสุวิวัฒน์", "en": "Kij Kosonsuwiwat"}, {"id": "kxth6207146", "th": "อานนท์ พลดงนอก", "en": "Arnon Phondongnok"}, {"id": "kxth6207975", "th": "พรเทพ เสือฟัก", "en": "Pornthep Surfug"}, {"id": "kxth6208808", "th": "วัชรพล จันทะแสง", "en": "Watcharaphon Jantasaeng"}, {"id": "kxth6208811", "th": "พิมพ์สร ว่องวิการณ์", "en": "Pimsorn Vongvikan"}, {"id": "kxth6209501", "th": "ฉัตรเมธา เอกะสิงห์", "en": "Chatmetha Agasing"}, {"id": "kxth6300599", "th": "สุวัชชัย ธรรมภารา", "en": "Suwatchai Thamaphara"}, {"id": "kxth6400584", "th": "ปรียานุช บุษยาตรัจ", "en": "Preyanuch Budsayatrut"}, {"id": "kxth6400609", "th": "ทนงกิตต์ เหมะ", "en": "Tanongkit Heyma"}, {"id": "kxth6402233", "th": "จักรพงษ์ กุละคำแสง", "en": "Chakkaphong Kulakhamsaeng"}, {"id": "kxth6402429", "th": "ศรันย์ วะรงค์", "en": "Saran Warong"}, {"id": "kxth6500948", "th": "สมพร บุตรอุบล", "en": "Somporn Bootubol"}, {"id": "kxth6501470", "th": "ทศพล ณัฐชาคร", "en": "Tossapol Natchakorn"}, {"id": "kxth6501543", "th": "อภิญญา แก้วกองเครือ", "en": "Apinya Kaewkongkrua"}, {"id": "kxth6501635", "th": "ณัฐกฤต พวงชัยยะ", "en": "Nattakit Poungchaiya"}, {"id": "kxth6503218", "th": "ธัญญาพร บุณยางกูร", "en": "Thanyaporn Boonnayangkool"}, {"id": "kxth6503984", "th": "ทิวา เจริญสินธุ์", "en": "Thiwa Charoensin"}, {"id": "kxth6600032", "th": "ชณันวัชร์ พงศ์ศรินธรรม", "en": "Chananwat Pongsarintham"}, {"id": "kxth6600071", "th": "วรภัทร รักวงษ์ฤทธิ์", "en": "Worapat Rakwongrit"}, {"id": "kxth6600133", "th": "วัสน์พล แก้วจรัสธนากุล", "en": "Vatsapol Kaewjarattanakul"}, {"id": "kxth6600233", "th": "ภาณุพงศ์ เกตุนพคุณ", "en": "Panupong Ketnoppakun"}, {"id": "kxth6600284", "th": "เหวินซง ฟาน", "en": "Wensong Fan"}, {"id": "kxth6600344", "th": "นิตา เหมือนสันเทียะ", "en": "Nita Muansanthia"}, {"id": "kxth6600357", "th": "ธิดา แซ่หลิ่ว", "en": "Tida Sae-liw"}, {"id": "kxth6600508", "th": "จวิ้นปั๋ว เซี่ย", "en": "Junbo Xie"}, {"id": "kxth6600551", "th": "ชิง ม่าย", "en": "Qing Mai"}, {"id": "kxth6600619", "th": "จวน จาง", "en": "Juan Zhang"}];
+  const DEFAULT_SOURCE = "IT-Department.csv";
+  const DEFAULT_PRIZES = () => [{id:"p1",name:"รางวัลที่ 1",qty:6},{id:"p2",name:"รางวัลที่ 2",qty:10},{id:"p3",name:"รางวัลที่ 3",qty:8}];
+  const KEY = "kex-halloween-draw-v3";
+  let S = null, current = null, rolling = false, tab = "pool", view = null;
+
+  try{ const s = JSON.parse(localStorage.getItem(KEY)); if(s && Array.isArray(s.pool) && Array.isArray(s.prizes)) S = s; }catch(e){}
+  if(!S){
+    let prizes = DEFAULT_PRIZES();
+    S = {all:DEFAULT_PEOPLE.map(p => ({...p})), pool:[], winners:[], absent:[], source:DEFAULT_SOURCE, prizes, sel:null};
+    S.pool = S.all.map(p => ({...p}));
+  }
+  const save = () => { try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} };
+
+  const $ = id => document.getElementById(id);
+  const reel = $("reel"), reelText = $("reelText"), drawBtn = $("drawBtn"), decide = $("decide");
+
+  const given = id => S.winners.filter(w => w.prize === id);
+  const left = p => Math.max(0, p.qty - given(p.id).length);
+  const prizeById = id => S.prizes.find(p => p.id === id);
+  function autoSelect(){
+    const sel = prizeById(S.sel);
+    if(sel && left(sel) > 0) return;
+    // draw from the smallest prize up: pick the last prize in the list that still has stock
+    const open = S.prizes.filter(p => left(p) > 0);
+    S.sel = open.length ? open[open.length-1].id : null;
+  }
+
+  const keyOf = p => p.id || p.th || p.en;
+  const same = (a, b) => keyOf(a) === keyOf(b);
+  function clean(arr){
+    const seen = new Set(), out = [];
+    arr.forEach(p => {
+      p = {id:String(p.id ?? "").trim(), th:String(p.th ?? "").trim(), en:String(p.en ?? "").trim()};
+      if(!p.th && p.en){ p.th = p.en; }
+      if(!p.th) return;
+      if(p.en === p.th) p.en = "";
+      const k = keyOf(p); if(seen.has(k)) return; seen.add(k); out.push(p);
+    });
+    return out;
+  }
+  function load(people, source){
+    people = clean(people);
+    if(!people.length){ flash("ไม่พบรายชื่อในไฟล์ ตรวจสอบหัวคอลัมน์ empcode, employeename, employeenameen หรือใส่ชื่อบรรทัดละคน"); return; }
+    S.all = people.map(p => ({...p})); S.pool = people.map(p => ({...p})); S.winners = []; S.absent = []; S.source = source || ""; S.sel = null;
+    current = null; decide.hidden = true; setReel("hint","โหลดรายชื่อแล้ว " + people.length + " คน พร้อมสุ่ม"); save(); render();
+  }
+  function flash(msg){ setReel("hint", msg); }
+  function showPerson(p){
+    reelText.className = "name"; reelText.innerHTML = '<span class="pid"></span><span class="pth"></span><span class="pen"></span>';
+    reelText.querySelector(".pid").textContent = p.id || "";
+    reelText.querySelector(".pth").textContent = p.th;
+    reelText.querySelector(".pen").textContent = p.en || "";
+  }
+  function personEl(p){
+    const w = document.createElement("span"); w.className = "person";
+    const t = document.createElement("span"); t.textContent = p.th; w.appendChild(t);
+    if(p.id || p.en){
+      const sub = document.createElement("span"); sub.className = "sub";
+      if(p.id){ const c = document.createElement("code"); c.textContent = p.id; sub.appendChild(c); }
+      if(p.en) sub.appendChild(document.createTextNode((p.id ? " · " : "") + p.en));
+      w.appendChild(sub);
+    }
+    return w;
+  }
+  const label = p => p.th + (p.en ? " (" + p.en + ")" : "");
+  function setReel(kind, text){
+    reel.classList.remove("done","rolling");
+    reelText.className = kind; reelText.textContent = text;
+  }
+
+  function renderPrizes(){
+    const box = $("prizes"); box.innerHTML = "";
+    if(view && !prizeById(view)) view = null;
+    S.prizes.forEach(p => {
+      const b = document.createElement("button");
+      const l = left(p), g = given(p.id).length, out = l === 0, cur = S.sel === p.id;
+      b.className = "prize" + (out ? " out" : "") + (cur ? " current" : "");
+      b.setAttribute("aria-expanded", view === p.id);
+      b.innerHTML = `<span class="pnow"></span><span class="pn"></span><span class="pq"></span><span class="pg"></span>`;
+      b.querySelector(".pnow").textContent = cur ? "กำลังสุ่ม" : "";
+      b.querySelector(".pn").textContent = p.name;
+      b.querySelector(".pq").innerHTML = out ? `<span class="pill">ครบแล้ว</span>` : `เหลือ ${l} / ${p.qty}`;
+      const pg = b.querySelector(".pg"); pg.textContent = g ? `ออกแล้ว ${g} คน · ดูรายชื่อ` : "ยังไม่มีผู้ได้รับ"; pg.classList.toggle("zero", !g);
+      b.onclick = () => { view = view === p.id ? null : p.id; render(); };
+      box.appendChild(b);
+    });
+    const sel = prizeById(S.sel);
+    $("now").innerHTML = sel ? `กำลังสุ่ม: <b></b>` : (S.prizes.length ? "แจกของรางวัลครบทุกชิ้นแล้ว" : "ยังไม่มีของรางวัล เพิ่มได้ที่แผงด้านข้าง");
+    if(sel) $("now").querySelector("b").textContent = sel.name;
+
+    const d = $("prizeDetail"), vp = prizeById(view);
+    d.hidden = !vp; d.innerHTML = "";
+    if(!vp) return;
+    const head = document.createElement("div"); head.className = "dh";
+    const h = document.createElement("h3"); h.textContent = `${vp.name} · ออกแล้ว ${given(vp.id).length} / ${vp.qty}`;
+    const acts = document.createElement("div"); acts.className = "row";
+    if(left(vp) > 0 && S.sel !== vp.id){
+      const go = document.createElement("button"); go.className = "go"; go.textContent = "สุ่มรางวัลนี้";
+      go.disabled = rolling || current !== null;
+      go.onclick = () => { S.sel = vp.id; save(); render(); };
+      acts.appendChild(go);
+    }
+    const x = document.createElement("button"); x.textContent = "ปิด"; x.onclick = () => { view = null; render(); };
+    acts.appendChild(x); head.append(h, acts); d.appendChild(head);
+    const ws = given(vp.id);
+    if(!ws.length){ const e = document.createElement("p"); e.className = "empty"; e.textContent = "ยังไม่มีผู้ได้รับรางวัลนี้"; d.appendChild(e); return; }
+    const ol = document.createElement("ol");
+    ws.forEach(w => { const li = document.createElement("li"); li.appendChild(personEl(w.person)); ol.appendChild(li); });
+    d.appendChild(ol);
+  }
+
+  function renderPrizeEdit(){
+    const box = $("prizeEdit"); box.innerHTML = "";
+    S.prizes.forEach((p, i) => {
+      const row = document.createElement("div"); row.className = "pr";
+      const n = document.createElement("input"); n.id = "pn-" + p.id; n.value = p.name; n.setAttribute("aria-label","ชื่อรางวัล");
+      n.onchange = () => { p.name = n.value.trim() || ("รางวัลที่ " + (i+1)); save(); render(); };
+      const q = document.createElement("input"); q.id = "pq-" + p.id; q.type = "number"; q.min = Math.max(1, given(p.id).length); q.value = p.qty; q.setAttribute("aria-label","จำนวน");
+      q.onchange = () => { p.qty = Math.max(Number(q.min), parseInt(q.value,10) || 1); save(); render(); };
+      const d = document.createElement("button"); d.textContent = "ลบ";
+      d.disabled = given(p.id).length > 0; d.title = d.disabled ? "มีผู้ได้รางวัลนี้แล้ว คืนชื่อเข้าโถก่อนจึงลบได้" : "";
+      d.onclick = () => { S.prizes = S.prizes.filter(x => x !== p); if(S.sel === p.id) S.sel = null; save(); render(); };
+      row.append(n, q, d); box.appendChild(row);
+    });
+  }
+
+  function render(){
+    autoSelect();
+    $("count").innerHTML = `เหลือในโถ <b>${S.pool.length}</b> · ได้รางวัล <b>${S.winners.length}</b> · ไม่อยู่ <b>${S.absent.length}</b>`;
+    drawBtn.disabled = rolling || !S.pool.length || current !== null || !S.sel;
+    $("sampleBanner").hidden = !S.source; $("sampleBanner").textContent = S.source ? `รายชื่อจาก ${S.source} · ${S.all.length} คน` : "";
+    renderPrizes();
+    if(!document.activeElement || !document.activeElement.closest || !document.activeElement.closest("#prizeEdit")) renderPrizeEdit();
+    const titles = {pool:"รายชื่อที่รอสุ่ม", winners:"ผู้ได้รางวัล", absent:"ไม่อยู่ในงาน"};
+    const arr = S[tab];
+    $("listTitle").firstChild.textContent = titles[tab] + " ";
+    $("listCount").textContent = arr.length + " คน";
+    document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === tab));
+    const ul = $("list"); ul.innerHTML = "";
+    if(!arr.length){ ul.innerHTML = `<li class="empty">ยังไม่มีรายชื่อ</li>`; return; }
+    arr.forEach((item,i) => {
+      const n = tab === "winners" ? item.person : item;
+      const li = document.createElement("li");
+      const sp = document.createElement("span");
+      if(tab === "winners"){ const t = document.createElement("span"); t.className="tag"; t.textContent = (prizeById(item.prize)||{name:"รางวัล"}).name; sp.appendChild(t); }
+      sp.style.display = "flex"; sp.style.gap = "6px"; sp.style.alignItems = "baseline";
+      sp.appendChild(personEl(n)); li.appendChild(sp);
+      if(tab !== "pool"){
+        const b = document.createElement("button"); b.textContent = tab === "winners" ? "คืนรางวัล" : "คืนเข้าโถ";
+        b.onclick = () => { S[tab].splice(i,1); S.pool.push(n); save(); render(); };
+        li.appendChild(b);
+      }
+      ul.appendChild(li);
+    });
+  }
+
+  function draw(){
+    if(rolling || current !== null || !S.pool.length || !S.sel) return;
+    rolling = true; render(); decide.hidden = true;
+    reel.classList.remove("done"); reel.classList.add("rolling");
+    const pick = S.pool[Math.floor(crypto.getRandomValues(new Uint32Array(1))[0] / 2**32 * S.pool.length)];
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let delay = 45, elapsed = 0; const total = reduce ? 0 : 2600;
+    (function tick(){
+      if(elapsed >= total){ finish(pick); return; }
+      showPerson(S.pool[Math.floor(Math.random()*S.pool.length)]);
+      elapsed += delay; delay *= 1.07;
+      setTimeout(tick, delay);
+    })();
+  }
+  function finish(pick){
+    rolling = false; current = pick;
+    reel.classList.remove("rolling"); reel.classList.add("done");
+    showPerson(pick); reelText.classList.remove("pop"); void reelText.offsetWidth; reelText.classList.add("pop");
+    $("keepWin").textContent = "อยู่ในงาน · รับ" + (prizeById(S.sel)||{name:"รางวัล"}).name;
+    decide.hidden = false; render(); $("keepWin").focus();
+  }
+  function resolve(action){
+    if(current === null) return;
+    const i = S.pool.indexOf(current);
+    if(action !== "skip" && i > -1) S.pool.splice(i,1);
+    const prize = prizeById(S.sel);
+    if(action === "win") S.winners.push({person:current, prize:S.sel});
+    if(action === "absent") S.absent.push(current);
+    const name = label(current); current = null; decide.hidden = true; save(); render();
+    if(action === "absent"){ setReel("hint", name + " ถูกตัดชื่อแล้ว กำลังสุ่มใหม่…"); setTimeout(draw, 700); }
+    else if(action === "win"){ setReel("hint", "ยินดีด้วย " + name + " ได้" + (prize ? prize.name : "รางวัล") + " 🎃"); }
+    else setReel("hint", "เก็บชื่อ " + name + " ไว้ในโถ กดสุ่มใหม่ได้");
+    if(!S.sel && action === "win") setReel("hint", "ยินดีด้วย " + name + " 🎃 แจกของรางวัลครบแล้ว");
+    else if(!S.pool.length) setReel("hint","สุ่มครบทุกคนแล้ว กด “เริ่มรอบใหม่” เพื่อเริ่มอีกครั้ง");
+  }
+
+  function setFocus(on){
+    document.body.classList.toggle("focus", on);
+    $("panelToggle").setAttribute("aria-expanded", !on);
+    $("panelToggleText").textContent = on ? "แสดงแผงตั้งค่า" : "ซ่อนแผงตั้งค่า";
+    try{ localStorage.setItem(KEY + "-focus", on ? "1" : ""); }catch(e){}
+  }
+  $("panelToggle").onclick = () => setFocus(!document.body.classList.contains("focus"));
+  try{ if(localStorage.getItem(KEY + "-focus")) setFocus(true); }catch(e){}
+
+  drawBtn.onclick = draw;
+  $("keepWin").onclick = () => resolve("win");
+  $("absent").onclick = () => resolve("absent");
+  $("skip").onclick = () => resolve("skip");
+  document.addEventListener("keydown", e => {
+    if(e.code === "Space" && !/TEXTAREA|INPUT|BUTTON/.test(document.activeElement.tagName)){ e.preventDefault(); draw(); }
+  });
+  document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); });
+  $("addPrize").onclick = () => {
+    const id = "p" + Date.now().toString(36);
+    S.prizes.push({id, name:"รางวัลที่ " + (S.prizes.length+1), qty:1}); save(); render();
+  };
+
+  let resetArmed = false;
+  $("resetBtn").onclick = e => {
+    if(!resetArmed){ resetArmed = true; e.target.textContent = "กดอีกครั้งเพื่อยืนยัน"; setTimeout(()=>{resetArmed=false; e.target.textContent="เริ่มรอบใหม่";}, 3000); return; }
+    resetArmed = false; e.target.textContent = "เริ่มรอบใหม่";
+    S.pool = [...S.all]; S.winners = []; S.absent = []; S.sel = null; current = null; decide.hidden = true;
+    setReel("hint","รีเซ็ตแล้ว ทุกคนกลับเข้าโถ และของรางวัลกลับมาครบ"); save(); render();
+  };
+  $("pasteBtn").onclick = () => { const v = $("paste").value; if(v.trim()){ load(v.split(/\r?\n/).map(n => ({th:n}))); $("paste").value=""; } };
+
+  function parseCSV(text){
+    const rows = []; let row = [], f = "", q = false;
+    for(let i = 0; i < text.length; i++){
+      const c = text[i];
+      if(q){ if(c === '"'){ if(text[i+1] === '"'){ f += '"'; i++; } else q = false; } else f += c; }
+      else if(c === '"') q = true;
+      else if(c === ","){ row.push(f); f = ""; }
+      else if(c === "\n" || c === "\r"){ if(c === "\r" && text[i+1] === "\n") i++; row.push(f); rows.push(row); row = []; f = ""; }
+      else f += c;
+    }
+    if(f !== "" || row.length){ row.push(f); rows.push(row); }
+    return rows;
+  }
+  function fromRows(rows){
+    rows = rows.filter(r => r && r.some(c => String(c ?? "").trim()));
+    if(!rows.length) return [];
+    const head = rows[0].map(h => String(h ?? "").trim().toLowerCase());
+    const iId = head.indexOf("empcode"), iTh = head.indexOf("employeename"), iEn = head.indexOf("employeenameen"), iLeave = head.indexOf("leavedate");
+    if(iTh > -1 || iEn > -1){
+      return rows.slice(1)
+        .filter(r => iLeave < 0 || ["", "null"].includes(String(r[iLeave] ?? "").trim().toLowerCase()))
+        .map(r => ({id: iId > -1 ? r[iId] : "", th: iTh > -1 ? r[iTh] : "", en: iEn > -1 ? r[iEn] : ""}));
+    }
+    return rows.map(r => ({th: r.find(c => String(c ?? "").trim())}));
+  }
+
+  $("fileIn").onchange = e => {
+    const f = e.target.files[0]; if(!f) return;
+    const ext = f.name.split(".").pop().toLowerCase();
+    const r = new FileReader();
+    if(ext === "xlsx" || ext === "xls"){
+      if(!window.XLSX){ flash("อ่านไฟล์ Excel ไม่ได้ ลองบันทึกเป็น .csv แล้วอัปโหลดใหม่"); return; }
+      r.onload = ev => {
+        const wb = XLSX.read(new Uint8Array(ev.target.result), {type:"array"});
+        load(fromRows(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1, raw:false})), f.name);
+      };
+      r.readAsArrayBuffer(f);
+    } else {
+      r.onload = ev => {
+        const text = String(ev.target.result).replace(/^\uFEFF/,"");
+        load(ext === "csv" ? fromRows(parseCSV(text)) : text.split(/\r?\n/).map(n => ({th:n})), f.name);
+      };
+      r.readAsText(f, "utf-8");
+    }
+    e.target.value = "";
+  };
+
+  render();
+})();
+</script>
+
+</body>
+</html>
